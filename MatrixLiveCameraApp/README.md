@@ -2,6 +2,12 @@
 
 New Android app in the existing odmetnik/Matrix-Live repository. **The old Phoenix Matrix Wallpaper ZIP and its workflow on the main branch are left unchanged.**
 
+## Version 1.2.0 — image quality
+- 4x4 ordered glyph dithering reduces long bands of repeated characters on flat walls and backgrounds.
+- Local-neighbourhood contrast and contour recovery improves the structure of faces and objects.
+- Longer, brighter Matrix rain trails are layered over the recognizable ASCII camera image.
+- All processing remains on-device with no network permissions.
+
 ## Features
 - CameraX, front selfie camera by default, switchable to back camera.
 - Camera grayscale is rotated/mirrored, downsampled, contrast-adjusted and represented **only by green glyphs**.
