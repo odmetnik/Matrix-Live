@@ -19,6 +19,14 @@ data class LumaFrame(val bytes: ByteArray, val width: Int, val height: Int)
  */
 class MatrixRenderer {
     private val alphabet = " .,:;irsXA253hMHGS#9B&@".toCharArray()
+    // Ordered spatial dithering: neighbouring pixels with similar luminance
+    // receive slightly different glyphs, avoiding long monochrome text bands.
+    private val bayer4 = intArrayOf(
+        0, 8, 2, 10,
+        12, 4, 14, 6,
+        3, 11, 1, 9,
+        15, 7, 13, 5
+    )
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
         isSubpixelText = false
@@ -75,6 +83,11 @@ class MatrixRenderer {
                 (((col + .5f) * cellW - offsetX) / scale).toInt()
                     .coerceIn(0, source!!.width - 1)
             } else 0
+            // One-sample offset in camera-space approximates the width of a glyph.
+            val sampleDx = if (hasFrame) max(1, (cellW / scale).toInt()) else 1
+            val sampleDy = if (hasFrame) max(1, (cellH / scale).toInt()) else 1
+            val leftX = if (hasFrame) (sx - sampleDx).coerceAtLeast(0) else 0
+            val rightX = if (hasFrame) (sx + sampleDx).coerceAtMost(source!!.width - 1) else 0
 
             for (row in 0 until rows) {
                 val sy = if (hasFrame) {
@@ -82,37 +95,53 @@ class MatrixRenderer {
                         .coerceIn(0, source!!.height - 1)
                 } else 0
                 val v = if (hasFrame) source!!.bytes[sy * source.width + sx].toInt() and 255 else 0
-                val adjusted = contrastLut[v]
-                val edge = if (hasFrame && edges) {
-                    val right = source!!.bytes[sy * source.width +
-                        (sx + 1).coerceAtMost(source.width - 1)].toInt() and 255
-                    val down = source.bytes[(sy + 1).coerceAtMost(source.height - 1) *
-                        source.width + sx].toInt() and 255
-                    ((abs(v - right) + abs(v - down)) * 1.7f).coerceAtMost(110f)
-                } else 0f
+                // Read a small local neighbourhood. This recovers subtle
+                // variations in facial features without exposing the source image.
+                var localDetail = 0f
+                var edge = 0f
+                if (hasFrame) {
+                    val data = source!!.bytes
+                    val stride = source.width
+                    val l = data[sy * stride + leftX].toInt() and 255
+                    val r = data[sy * stride + rightX].toInt() and 255
+                    val upY = (sy - sampleDy).coerceAtLeast(0)
+                    val downY = (sy + sampleDy).coerceAtMost(source.height - 1)
+                    val u = data[upY * stride + sx].toInt() and 255
+                    val d = data[downY * stride + sx].toInt() and 255
+                    val localMean = (v * 4 + l + r + u + d) * .125f
+                    localDetail = (v - localMean) * .85f
+                    if (edges) {
+                        edge = ((abs(r - l) + abs(d - u)) * .43f).coerceAtMost(95f)
+                    }
+                }
+                val adjusted = (contrastLut[v] + localDetail).coerceIn(0f, 255f)
 
+                // A long, luminous stream is visible even in darker regions.
+                // Picture brightness stays dominant where a face is visible.
                 val distance = head - row
-                val tail = if (distance >= 0f && distance < 15f) 1f - distance / 15f else 0f
+                val tail = if (distance >= 0f && distance < 20f) 1f - distance / 20f else 0f
+                val structure = (adjusted * .72f + edge * .52f).coerceAtMost(240f)
                 val brightness = if (hasFrame) {
-                    // Preserve the camera structure, then let descending
-                    // streaks briefly illuminate its individual glyphs.
-                    val structure = adjusted * .76f + edge * .60f
-                    (structure + tail * (62f + structure * .40f)).coerceAtMost(255f)
-                } else tail * 235f
-                if (brightness < 16f) continue
+                    (structure + tail * (96f + structure * .23f)).coerceAtMost(255f)
+                } else tail * 240f
+                if (brightness < 12f) continue
 
-                val glyphIndex = if (hasFrame && tail < .72f) {
-                    (adjusted / 255f * (alphabet.size - 1)).toInt()
-                        .coerceIn(1, alphabet.size - 1)
+                // Dither is deterministic per cell: no image flicker.
+                // Only cells inside falling rain swap glyphs over time.
+                val dither = (bayer4[(row and 3) * 4 + (col and 3)] - 7.5f) * .095f
+                val toneIndex = (1f + adjusted / 255f * (alphabet.size - 2) +
+                    dither + localDetail * .014f).toInt().coerceIn(1, alphabet.size - 1)
+                val glyphIndex = if (hasFrame && tail < .25f) {
+                    toneIndex
                 } else {
-                    1 + ((col * 17L + row * 31L + variation) and 0x7fffffffL)
+                    1 + ((col * 17L + row * 31L + variation * 7L) and 0x7fffffffL)
                         .rem(alphabet.size - 1).toInt()
                 }
 
                 val green = brightness.toInt().coerceIn(0, 255)
                 paint.color = Color.rgb((green * .11f).toInt(), green, (green * .27f).toInt())
                 // Glow only for brighter rain heads / strong edges: cheaper than glow on every glyph.
-                val highlight = glow && (tail > .89f || edge > 85f)
+                val highlight = glow && (tail > .85f || (hasFrame && edges && edge > 80f))
                 if (highlight) paint.setShadowLayer(cellW * .5f, 0f, 0f, Color.GREEN)
                 else paint.clearShadowLayer()
 
