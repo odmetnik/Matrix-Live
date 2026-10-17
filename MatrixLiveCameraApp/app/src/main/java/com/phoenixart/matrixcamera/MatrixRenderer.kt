@@ -58,6 +58,15 @@ class MatrixRenderer {
         val travel = (3f + speed.coerceIn(0, 100) * .18f) * time
         val variation = (time * 9f).toInt()
 
+        // Soft contrast maps 0..255 onto 0..255 without clipping broad
+        // highlight areas into the same '@' character.
+        val gain = 1f + contrast.coerceIn(0, 100) / 70f
+        val contrastLut = FloatArray(256) { level ->
+            val d = level - 127.5f
+            (127.5f + d * gain / (1f + kotlin.math.abs(d) *
+                (gain - 1f) / 127.5f)).coerceIn(0f, 255f)
+        }
+
         for (col in 0 until columns) {
             val seed = (col.toLong() * 1103515245L + 12345L) and 0x7fffffff
             val phase = (seed % (rows + 23)).toFloat()
@@ -73,8 +82,7 @@ class MatrixRenderer {
                         .coerceIn(0, source!!.height - 1)
                 } else 0
                 val v = if (hasFrame) source!!.bytes[sy * source.width + sx].toInt() and 255 else 0
-                val adjusted = ((v - 128f) * (1f + contrast.coerceIn(0,100) / 70f) + 128f)
-                    .coerceIn(0f, 255f)
+                val adjusted = contrastLut[v]
                 val edge = if (hasFrame && edges) {
                     val right = source!!.bytes[sy * source.width +
                         (sx + 1).coerceAtMost(source.width - 1)].toInt() and 255
@@ -86,11 +94,14 @@ class MatrixRenderer {
                 val distance = head - row
                 val tail = if (distance >= 0f && distance < 15f) 1f - distance / 15f else 0f
                 val brightness = if (hasFrame) {
-                    max(adjusted * .82f + edge, tail * 85f)
+                    // Preserve the camera structure, then let descending
+                    // streaks briefly illuminate its individual glyphs.
+                    val structure = adjusted * .76f + edge * .60f
+                    (structure + tail * (62f + structure * .40f)).coerceAtMost(255f)
                 } else tail * 235f
                 if (brightness < 16f) continue
 
-                val glyphIndex = if (hasFrame) {
+                val glyphIndex = if (hasFrame && tail < .72f) {
                     (adjusted / 255f * (alphabet.size - 1)).toInt()
                         .coerceIn(1, alphabet.size - 1)
                 } else {
