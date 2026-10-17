@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Phoenix Matrix Live Camera</string>
+    <string name="wallpaper_name">Phoenix Matrix Live Wallpaper</string>
+    <string name="wallpaper_description">Animirana Matrix kiša sa zadnjim spremljenim kadrom, bez kamere u pozadini.</string>
+</resources>
