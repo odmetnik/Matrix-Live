@@ -65,15 +65,32 @@ class MainActivity : ComponentActivity() {
             setBackgroundColor(Color.rgb(14, 19, 15))
         }
         scroller.addView(controls)
-        root.addView(scroller, LinearLayout.LayoutParams(-1, dp(284)))
 
+        // Keep this compact bar visible even when settings are collapsed.
+        // The camera preview then fills virtually the entire display.
+        val panelBar = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), 0, dp(8), 0)
+            setBackgroundColor(Color.rgb(14, 19, 15))
+        }
         status = TextView(this).apply {
-            text = "Matrix Live Camera • prednja kamera"
+            text = "Kamera: prednja"
             setTextColor(Color.GREEN)
-            gravity = Gravity.CENTER
+            gravity = Gravity.CENTER_VERTICAL
             textSize = 14f
         }
-        controls.addView(status)
+        panelBar.addView(status, LinearLayout.LayoutParams(0, -1, 1f))
+        panelBar.addView(Button(this).apply {
+            text = "SAKRIJ POSTAVKE"
+            textSize = 11f
+            setOnClickListener {
+                val expanded = scroller.visibility == View.VISIBLE
+                scroller.visibility = if (expanded) View.GONE else View.VISIBLE
+                text = if (expanded) "PRIKAŽI POSTAVKE" else "SAKRIJ POSTAVKE"
+            }
+        })
+        root.addView(panelBar, LinearLayout.LayoutParams(-1, dp(54)))
+        root.addView(scroller, LinearLayout.LayoutParams(-1, dp(240)))
 
         val cameraRow = LinearLayout(this)
         val swap = Button(this).apply {
@@ -232,8 +249,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 provider.bindToLifecycle(this, selector, analysis)
-                status.text = if (useFront) "Matrix Live Camera • prednja kamera"
-                              else "Matrix Live Camera • stražnja kamera"
+                status.text = if (useFront) "Kamera: prednja" else "Kamera: stražnja"
             } catch (e: Exception) {
                 status.text = "Kamera nije dostupna: " + (e.message ?: "greška")
             }
