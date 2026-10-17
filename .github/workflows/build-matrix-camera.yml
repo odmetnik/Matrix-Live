@@ -1,0 +1,62 @@
+name: Build Matrix Live Camera APK
+
+on:
+  push:
+    branches:
+      - feature/matrix-live-camera
+    paths:
+      - 'MatrixLiveCameraApp/**'
+      - '.github/workflows/build-matrix-camera.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-camera-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Configure Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configure Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Configure Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Compile Matrix Live Camera
+        working-directory: MatrixLiveCameraApp
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MatrixLiveCamera-debug-APK
+          path: MatrixLiveCameraApp/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish test APK in GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: matrix-live-camera-test-${{ github.run_number }}
+          name: Matrix Live Camera test #${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          generate_release_notes: false
+          files: MatrixLiveCameraApp/app/build/outputs/apk/debug/app-debug.apk
